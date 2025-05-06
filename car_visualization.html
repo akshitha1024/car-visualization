@@ -1,0 +1,180 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Car Data Dashboard</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #f4f6f8;
+      margin: 0;
+      padding: 0;
+    }
+    header {
+      background-color: #2c3e50;
+      color: white;
+      padding: 1rem 2rem;
+      text-align: center;
+    }
+    main {
+      padding: 2rem;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 2rem;
+      max-width: 1200px;
+      margin: auto;
+    }
+    section {
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      padding: 1rem;
+    }
+    h2 {
+      margin-top: 0;
+      color: #34495e;
+    }
+    svg {
+      width: 100%;
+      height: 400px;
+    }
+    .tooltip {
+      position: absolute;
+      background-color: white;
+      border: 1px solid #ccc;
+      padding: 5px;
+      pointer-events: none;
+      font-size: 12px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }
+    footer {
+      text-align: center;
+      color: #666;
+      font-size: 0.9rem;
+      padding: 2rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Interactive Car Data Visualization Dashboard</h1>
+    <p>Explore relationships between fuel efficiency, horsepower, weight, origin, and model year.</p>
+  </header>
+
+  <main>
+    <section>
+      <h2>Scatter Plot: MPG vs Horsepower (Color by Weight)</h2>
+      <div id="scatterplot"></div>
+    </section>
+
+    <section>
+      <h2>Line Chart: Average MPG over Model Years</h2>
+      <div id="linechart"></div>
+    </section>
+
+    <section>
+      <h2>Box Plot: MPG Distribution by Origin</h2>
+      <div id="boxplot"></div>
+    </section>
+
+    <section>
+      <h2>Key Insights</h2>
+      <ul>
+        <li><strong>American cars</strong> tend to be heavier and show lower MPG values in earlier years.</li>
+        <li><strong>Japanese and European cars</strong> show higher MPG efficiency in most model years.</li>
+        <li>There's a general <strong>increasing trend in MPG</strong> over time, reflecting fuel economy improvements.</li>
+        <li>Higher <strong>horsepower often correlates with lower MPG</strong>, especially in heavy vehicles.</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer>
+    &copy; 2025 Car Data Visualization by D3.js | Built for interactive data exploration
+  </footer>
+
+  <div class="tooltip" style="opacity:0;"></div>
+
+  <script>
+    d3.csv("dataset1-cars.csv").then(data => {
+      data.forEach(d => {
+        d.MPG = +d.MPG;
+        d.Weight = +d.Weight;
+        d.Horsepower = +d.Horsepower;
+        d["Model Year"] = +d["Model Year"];
+      });
+
+      const tooltip = d3.select(".tooltip");
+
+      const svg1 = d3.select("#scatterplot").append("svg");
+      const width = svg1.node().clientWidth, height = 400;
+      const x1 = d3.scaleLinear().domain(d3.extent(data, d => d.Horsepower)).range([40, width - 40]);
+      const y1 = d3.scaleLinear().domain(d3.extent(data, d => d.MPG)).range([height - 40, 40]);
+      const color = d3.scaleLinear().domain(d3.extent(data, d => d.Weight)).range(["lightblue", "darkblue"]);
+
+      svg1.append("g").attr("transform", `translate(0,${height - 40})`).call(d3.axisBottom(x1));
+      svg1.append("g").attr("transform", `translate(40,0)`).call(d3.axisLeft(y1));
+
+      svg1.selectAll("circle")
+        .data(data.filter(d => d.MPG && d.Horsepower))
+        .enter().append("circle")
+        .attr("cx", d => x1(d.Horsepower))
+        .attr("cy", d => y1(d.MPG))
+        .attr("r", 5)
+        .attr("fill", d => color(d.Weight))
+        .on("mouseover", (event, d) => {
+          tooltip.style("opacity", 1)
+                 .html(`<strong>${d.Car}</strong><br>MPG: ${d.MPG}<br>HP: ${d.Horsepower}<br>Weight: ${d.Weight}`)
+                 .style("left", event.pageX + 10 + "px")
+                 .style("top", event.pageY - 40 + "px");
+        })
+        .on("mouseout", () => tooltip.style("opacity", 0));
+
+      const svg2 = d3.select("#linechart").append("svg").attr("width", width).attr("height", height);
+      const mpgByYear = d3.rollups(data.filter(d => d.MPG), v => d3.mean(v, d => d.MPG), d => d["Model Year"]).sort((a, b) => d3.ascending(a[0], b[0]));
+      const x2 = d3.scaleLinear().domain(d3.extent(mpgByYear, d => d[0])).range([40, width - 40]);
+      const y2 = d3.scaleLinear().domain([d3.min(mpgByYear, d => d[1]) - 2, d3.max(mpgByYear, d => d[1]) + 2]).range([height - 40, 40]);
+
+      svg2.append("g").attr("transform", `translate(0,${height - 40})`).call(d3.axisBottom(x2).tickFormat(d3.format("d")));
+      svg2.append("g").attr("transform", `translate(40,0)`).call(d3.axisLeft(y2));
+      svg2.append("path")
+        .datum(mpgByYear)
+        .attr("fill", "none")
+        .attr("stroke", "green")
+        .attr("stroke-width", 2)
+        .attr("d", d3.line().x(d => x2(d[0])).y(d => y2(d[1])));
+
+      const svg3 = d3.select("#boxplot").append("svg").attr("width", width).attr("height", height);
+      const origins = Array.from(new Set(data.map(d => d.Origin)));
+      const x3 = d3.scaleBand().domain(origins).range([40, width - 40]).padding(0.5);
+      const y3 = d3.scaleLinear().domain(d3.extent(data, d => d.MPG)).nice().range([height - 40, 40]);
+
+      svg3.append("g").attr("transform", `translate(0,${height - 40})`).call(d3.axisBottom(x3));
+      svg3.append("g").attr("transform", `translate(40,0)`).call(d3.axisLeft(y3));
+
+      origins.forEach(origin => {
+        const mpgs = data.filter(d => d.Origin === origin && d.MPG).map(d => d.MPG).sort(d3.ascending);
+        const q1 = d3.quantile(mpgs, 0.25), median = d3.quantile(mpgs, 0.5), q3 = d3.quantile(mpgs, 0.75);
+        const min = d3.min(mpgs), max = d3.max(mpgs);
+        const center = x3(origin) + x3.bandwidth() / 2;
+
+        svg3.append("line").attr("x1", center).attr("x2", center).attr("y1", y3(min)).attr("y2", y3(max)).attr("stroke", "black");
+        svg3.append("rect")
+          .attr("x", x3(origin))
+          .attr("y", y3(q3))
+          .attr("height", y3(q1) - y3(q3))
+          .attr("width", x3.bandwidth())
+          .attr("stroke", "black")
+          .attr("fill", "lightgray");
+        svg3.append("line")
+          .attr("x1", x3(origin))
+          .attr("x2", x3(origin) + x3.bandwidth())
+          .attr("y1", y3(median))
+          .attr("y2", y3(median))
+          .attr("stroke", "red");
+      });
+    });
+  </script>
+</body>
+</html>
